@@ -39,6 +39,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   tags,
   tokenize='porter'
 );
+
+CREATE TABLE IF NOT EXISTS events (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts        TEXT NOT NULL,
+  kind      TEXT NOT NULL,
+  project   TEXT NOT NULL,
+  memory_id TEXT,
+  detail    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
 `;
 
 const SORT_MAP: Record<SortOption, string> = {
@@ -87,6 +99,8 @@ export class MemoryStore {
         .run(id, content, tagsJson);
     });
     tx();
+
+    this.logEvent('store', project, id);
 
     return {
       id,
@@ -172,6 +186,8 @@ export class MemoryStore {
         .run(now, row.id);
     }
 
+    this.logEvent('retrieve', (filter as any)?.project ?? 'unknown', undefined, String(rows.length));
+
     return rows.map(rowToMemory);
   }
 
@@ -198,6 +214,9 @@ export class MemoryStore {
                  ORDER BY rank`;
 
     const rows = this.db.prepare(sql).all(...params) as MemoryRow[];
+
+    this.logEvent('retrieve', 'unknown', undefined, String(rows.length));
+
     return rows.map(rowToMemory);
   }
 
@@ -210,7 +229,9 @@ export class MemoryStore {
         .run(id);
     }
     this.recalculateUtility(id);
-    return this.get(id);
+    const memory = this.get(id);
+    this.logEvent(useful ? 'feedback_useful' : 'feedback_not_useful', memory?.project ?? 'unknown', id);
+    return memory;
   }
 
   relate(id: string, relatedId: string): boolean {
@@ -361,8 +382,86 @@ export class MemoryStore {
     return count;
   }
 
+  logSession(project: string): void {
+    this.logEvent('session', project);
+  }
+
+  weeklyReport(weeks: number = 1): {
+    periodDays: number;
+    sessions: number;
+    retrievals: number;
+    stores: number;
+    feedbackUseful: number;
+    feedbackNotUseful: number;
+    yieldRate: number | null;
+    retrievalsPerSession: number | null;
+    signal: 'HEALTHY' | 'MARGINAL' | 'NO_DATA';
+    signalReasons: string[];
+  } {
+    const since = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const count = (kind: string): number => {
+      const row = this.db
+        .prepare(`SELECT COUNT(*) as c FROM events WHERE kind = ? AND ts >= ?`)
+        .get(kind, since) as { c: number };
+      return row.c;
+    };
+
+    const sessions = count('session');
+    const retrievals = count('retrieve');
+    const stores = count('store');
+    const feedbackUseful = count('feedback_useful');
+    const feedbackNotUseful = count('feedback_not_useful');
+
+    const totalFeedback = feedbackUseful + feedbackNotUseful;
+    const yieldRate = totalFeedback > 0 ? feedbackUseful / totalFeedback : null;
+    const retrievalsPerSession = sessions > 0 ? retrievals / sessions : null;
+
+    const signalReasons: string[] = [];
+    let signal: 'HEALTHY' | 'MARGINAL' | 'NO_DATA';
+
+    if (sessions === 0 || retrievals === 0) {
+      signal = 'NO_DATA';
+      if (sessions === 0) signalReasons.push('No sessions logged — SessionStart hook may not be running');
+      if (retrievals === 0) signalReasons.push('No retrievals recorded — coil is not being queried');
+    } else {
+      const issues: string[] = [];
+      if (retrievalsPerSession !== null && retrievalsPerSession < 2) {
+        issues.push(`retrieval rate low: ${retrievalsPerSession.toFixed(1)}/session (target ≥2)`);
+      }
+      if (yieldRate !== null && yieldRate < 0.2) {
+        issues.push(`yield rate low: ${(yieldRate * 100).toFixed(0)}% (target ≥20%)`);
+      }
+      if (yieldRate === null) {
+        issues.push('no feedback calls recorded — agents must call coil_feedback after using memories');
+      }
+      if (issues.length > 0) {
+        signal = 'MARGINAL';
+        signalReasons.push(...issues);
+      } else {
+        signal = 'HEALTHY';
+      }
+    }
+
+    return { periodDays: weeks * 7, sessions, retrievals, stores, feedbackUseful, feedbackNotUseful, yieldRate, retrievalsPerSession, signal, signalReasons };
+  }
+
   close(): void {
     this.db.close();
+  }
+
+  private logEvent(
+    kind: string,
+    project: string,
+    memoryId?: string,
+    detail?: string,
+  ): void {
+    const ts = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO events (ts, kind, project, memory_id, detail) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(ts, kind, project, memoryId ?? null, detail ?? null);
   }
 
   private recalculateUtility(id: string): void {
