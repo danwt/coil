@@ -56,8 +56,10 @@ Add to your MCP config (`.mcp.json`, Claude Code settings, etc.):
 {
   "mcpServers": {
     "coil": {
+      "type": "stdio",
       "command": "bun",
-      "args": ["run", "/path/to/coil/src/index.ts"]
+      "args": ["run", "/absolute/path/to/coil/src/index.ts"],
+      "env": {}
     }
   }
 }
@@ -65,15 +67,44 @@ Add to your MCP config (`.mcp.json`, Claude Code settings, etc.):
 
 Compatible with any MCP client (Claude Code, OpenCode, Cline, Continue, Goose).
 
-### As Claude Code plugin (full integration)
+### Full Claude Code integration
 
-Copy the `plugin/` contents into `~/.claude/plugins/coil/` to get lifecycle hooks (auto-context on session start, knowledge extraction on compaction) and the `/coil` skill. Update the `COIL_ROOT` paths in `hooks.json` and `.mcp.json` to point to your clone.
+Beyond the MCP server, Coil provides lifecycle hooks, a `/coil` skill, and a knowledge extraction agent. Install these to get automatic context injection and knowledge capture.
 
-Files in `plugin/`:
-- `hooks.json` — lifecycle automation config
-- `skills/coil/SKILL.md` — `/coil` slash command
-- `agents/memory-extractor.md` — PreCompact knowledge extractor
-- `.mcp.json` — MCP server registration
+**1. MCP server** — add to `~/.claude.json` under `mcpServers` (as above).
+
+**2. Hooks** — add to `~/.claude/settings.json` under `hooks`:
+
+```json
+{
+  "SessionStart": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "/absolute/path/to/coil/hooks/session-start.sh"
+        }
+      ]
+    }
+  ],
+  "PreCompact": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "agent",
+          "command": "Analyze the conversation transcript. Extract and store: (1) any architectural or technical decisions made — include the rationale, (2) recurring code patterns discovered, (3) errors encountered and their verified solutions, (4) user preferences learned. Use coil_store for each. Be selective — only store genuinely useful knowledge, not routine operations. Check existing memories with coil_query first to avoid duplicates."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**3. Skill** — copy `plugin/skills/coil/SKILL.md` to `~/.claude/skills/coil/SKILL.md`.
+
+**4. Agent** — copy `plugin/agents/memory-extractor.md` to `~/.claude/agents/memory-extractor.md`.
 
 ## MCP Tools
 
@@ -141,6 +172,7 @@ src/
 ├── schema.ts     # Memory types, Zod schemas, query types
 └── project.ts    # Git-based project auto-detection
 hooks/
+├── context.ts        # Direct SQLite context reader (used by session-start)
 ├── session-start.sh
 ├── session-stop.sh
 └── task-completed.sh

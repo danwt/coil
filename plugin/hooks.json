@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "${COIL_ROOT}/hooks/session-start.sh"
+          "command": "/Users/danwt/Documents/repos/coil/hooks/session-start.sh"
         }
       ]
     }
@@ -17,28 +17,6 @@
         {
           "type": "agent",
           "command": "Analyze the conversation transcript. Extract and store: (1) any architectural or technical decisions made — include the rationale, (2) recurring code patterns discovered, (3) errors encountered and their verified solutions, (4) user preferences learned. Use coil_store for each. Be selective — only store genuinely useful knowledge, not routine operations. Check existing memories with coil_query first to avoid duplicates."
-        }
-      ]
-    }
-  ],
-  "Stop": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "${COIL_ROOT}/hooks/session-stop.sh"
-        }
-      ]
-    }
-  ],
-  "TaskCompleted": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "${COIL_ROOT}/hooks/task-completed.sh"
         }
       ]
     }

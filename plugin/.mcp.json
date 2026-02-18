@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "coil": {
+      "type": "stdio",
       "command": "bun",
-      "args": ["run", "${COIL_ROOT}/src/index.ts"],
+      "args": ["run", "/Users/danwt/Documents/repos/coil/src/index.ts"],
       "env": {}
     }
   }
