@@ -19,6 +19,7 @@ if (!existsSync(DB_PATH)) {
 
 const store = new MemoryStore(DB_PATH);
 const project = detectProject();
+store.logSession(project);
 const ctx = store.context(project);
 store.close();
 
