@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Coil for Claude Code: registers MCP server, hooks, skill, and agent.
+# Install Coil for Claude Code: registers MCP server, hooks, and skill.
 # Run from the coil repo root: ./install.sh
 
 set -euo pipefail
@@ -100,11 +100,6 @@ echo "Installing skill..."
 mkdir -p "$CLAUDE_DIR/skills/coil"
 cp "$COIL_ROOT/plugin/skills/coil/SKILL.md" "$CLAUDE_DIR/skills/coil/SKILL.md"
 echo "  Copied SKILL.md to $CLAUDE_DIR/skills/coil/"
-
-# 4. Install agent
-echo "Installing agent..."
-cp "$COIL_ROOT/plugin/agents/memory-extractor.md" "$CLAUDE_DIR/agents/memory-extractor.md"
-echo "  Copied memory-extractor.md to $CLAUDE_DIR/agents/"
 
 echo ""
 echo "Done. Restart Claude Code to activate."

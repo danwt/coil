@@ -147,12 +147,9 @@ src/
 └── project.ts    # Git-based project auto-detection
 hooks/
 ├── context.ts        # Direct SQLite context reader (used by session-start)
-├── session-start.sh
-├── session-stop.sh
-└── task-completed.sh
+└── session-start.sh
 plugin/
-├── .mcp.json
-├── hooks.json
-├── skills/coil/SKILL.md
-└── agents/memory-extractor.md
+├── .mcp.json         # MCP server config (template)
+├── hooks.json        # Hook config (template)
+└── skills/coil/SKILL.md
 ```
