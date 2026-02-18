@@ -50,7 +50,7 @@ cd coil
 ./install.sh
 ```
 
-This registers the MCP server, adds SessionStart/PreCompact hooks, and installs the `/coil` skill and knowledge extraction agent. Restart Claude Code to activate.
+This registers the MCP server, adds the SessionStart hook, and installs the `/coil` skill. Restart Claude Code to activate.
 
 ### As MCP server only (any agent)
 
@@ -125,6 +125,35 @@ Cross-project high-utility decisions:
 ## Storage
 
 SQLite at `~/.coil/coil.db` (override with `COIL_DB_PATH` or `COIL_DB_DIR`). Single file, zero infrastructure, sub-millisecond queries. Data never leaves your machine.
+
+## Debugging and introspection
+
+**From Claude Code:**
+
+- `/coil status` — memory counts by kind, per-project breakdown, top utility items
+- `/coil search <query>` — full-text search across all memories
+- Ask Claude to run `coil_query` with filters (e.g. all errors for a project, everything above 0.7 utility)
+- Ask Claude to run `coil_export` for a full JSON dump
+
+**From the terminal:**
+
+```bash
+# List all memories sorted by utility
+sqlite3 ~/.coil/coil.db \
+  "SELECT id, kind, project, substr(content,1,80), printf('%.2f',utility) FROM memories ORDER BY utility DESC"
+
+# Count by project and kind
+sqlite3 ~/.coil/coil.db \
+  "SELECT project, kind, COUNT(*) FROM memories GROUP BY project, kind"
+
+# See what SessionStart would inject for the current directory
+bun run /path/to/coil/hooks/context.ts
+
+# Check DB exists and size
+ls -lh ~/.coil/coil.db
+```
+
+The DB is created on the first `coil_store` call. Utility scores start at 0.5 — memories that get retrieved and marked useful via `coil_feedback` climb toward 1.0, unused ones decay toward 0.1.
 
 ## Development
 

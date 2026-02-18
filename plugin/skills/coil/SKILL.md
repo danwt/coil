@@ -8,15 +8,8 @@ description: >
   "/coil search", "/coil forget". Do NOT use for ephemeral conversation
   context that won't matter next session.
 argument-hint: [status|search <query>|forget <id>]
-allowed-tools:
-  - mcp__coil__coil_status
-  - mcp__coil__coil_search
-  - mcp__coil__coil_query
-  - mcp__coil__coil_forget
-  - mcp__coil__coil_store
-  - mcp__coil__coil_feedback
-  - mcp__coil__coil_relate
-  - mcp__coil__coil_export
+user-invocable: true
+allowed-tools: mcp__coil__coil_status, mcp__coil__coil_search, mcp__coil__coil_query, mcp__coil__coil_forget, mcp__coil__coil_store, mcp__coil__coil_feedback, mcp__coil__coil_relate, mcp__coil__coil_export
 ---
 
 # Coil Memory Manager
@@ -29,7 +22,7 @@ allowed-tools:
 
 ## Storing Memories
 
-Use `coil_store` with kind, content, and tags. Kinds:
+Call `coil_store` with kind, content, and tags. Kinds:
 - `decision` — architectural/technical choices with rationale
 - `pattern` — code conventions, API usage, project structure
 - `error` — non-obvious errors and their verified solutions
@@ -40,17 +33,16 @@ Do NOT store routine operations, temporary debugging, or information already in 
 
 ## Querying
 
-Use `coil_query` with structured filters (kind, project, tags, utility threshold, dates).
-Use `coil_search` for full-text search when filters are insufficient.
+Call `coil_query` with structured filters (kind, project, tags, utility threshold, dates).
+Call `coil_search` for full-text search when filters are insufficient.
 
 ## Feedback
 
 After retrieving and using a memory, call `coil_feedback(id, useful=true)` to boost its utility score. Memories that are retrieved but never marked useful decay toward 0.1.
 
-## Inspecting
+## Debugging
 
 - `coil_status` — counts, projects, top utility
 - `coil_query` with `project: "*"` — cross-project view
 - `coil_export` — full JSON dump of all memories
-- CLI: `sqlite3 ~/.coil/coil.db "SELECT id, kind, project, substr(content,1,80), utility FROM memories ORDER BY utility DESC"`
-- CLI: `bun run <coil-root>/hooks/context.ts` — see what SessionStart injects
+- DB location: `~/.coil/coil.db`

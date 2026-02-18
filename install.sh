@@ -77,22 +77,9 @@ filtered = [h for h in existing if 'coil' not in h.get('hooks', [{}])[0].get('co
 filtered.append(session_hook)
 hooks['SessionStart'] = filtered
 
-# PreCompact hook
-compact_hook = {
-    'matcher': '',
-    'hooks': [{
-        'type': 'agent',
-        'prompt': 'Analyze the conversation transcript. Extract and store: (1) any architectural or technical decisions made — include the rationale, (2) recurring code patterns discovered, (3) errors encountered and their verified solutions, (4) user preferences learned. Use coil_store for each. Be selective — only store genuinely useful knowledge, not routine operations. Check existing memories with coil_query first to avoid duplicates.'
-    }]
-}
-existing = hooks.get('PreCompact', [])
-filtered = [h for h in existing if h.get('hooks', [{}])[0].get('type') != 'agent' or 'coil_store' not in h.get('hooks', [{}])[0].get('prompt', '')]
-filtered.append(compact_hook)
-hooks['PreCompact'] = filtered
-
 with open(path, 'w') as f:
     json.dump(settings, f, indent=2)
-print('  Added SessionStart and PreCompact hooks')
+print('  Added SessionStart hook')
 "
 
 # 3. Install skill
