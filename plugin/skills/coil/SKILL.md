@@ -22,23 +22,30 @@ allowed-tools: mcp__coil__coil_status, mcp__coil__coil_search, mcp__coil__coil_q
 
 ## Storing Memories
 
-Call `coil_store` with kind, content, and tags. Kinds:
-- `decision` — architectural/technical choices with rationale
+Call `coil_store` with kind, content, and tags (2-4 tags per memory).
+
+Kinds:
+- `decision` — architectural/technical choices. Always include rationale.
 - `pattern` — code conventions, API usage, project structure
-- `error` — non-obvious errors and their verified solutions
-- `preference` — user workflow preferences
+- `error` — non-obvious errors. Include error message, cause, and fix.
+- `preference` — user workflow preferences. Be specific.
 - `context` — project background knowledge
+
+Memories must be self-contained — a future agent should understand them without the original conversation. See [references/usage.md](references/usage.md) for content quality examples.
 
 Do NOT store routine operations, temporary debugging, or information already in CLAUDE.md.
 
-## Querying
+## Querying and Searching
 
-Call `coil_query` with structured filters (kind, project, tags, utility threshold, dates).
-Call `coil_search` for full-text search when filters are insufficient.
+- `coil_query` — structured filters (kind, project, tags, utility, dates). Use when you know what you're looking for.
+- `coil_search` — full-text search (FTS5 with porter stemming). Use for exploratory search.
 
-## Feedback
+See [references/usage.md](references/usage.md) for filter syntax, sort options, and examples.
 
-After retrieving and using a memory, call `coil_feedback(id, useful=true)` to boost its utility score. Memories that are retrieved but never marked useful decay toward 0.1.
+## Feedback and Linking
+
+- Call `coil_feedback(id, useful=true)` after using a retrieved memory. Memories without positive feedback decay toward 0.1.
+- Call `coil_relate(id, related_id)` to link related memories (e.g. an error and the decision that fixed it).
 
 ## Debugging
 
