@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "coil": {
+      "command": "bun",
+      "args": ["run", "${COIL_ROOT}/src/index.ts"],
+      "env": {}
+    }
+  }
+}
