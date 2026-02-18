@@ -11,19 +11,20 @@ export const MEMORY_KINDS = [
 export const MemoryKind = z.enum(MEMORY_KINDS);
 export type MemoryKind = z.infer<typeof MemoryKind>;
 
-export interface Memory {
-  id: string;
-  kind: MemoryKind;
-  project: string;
-  content: string;
-  tags: string[];
-  utility: number;
-  retrievals: number;
-  used_after_retrieval: number;
-  created: string;
-  last_accessed: string;
-  related: string[];
-}
+export const MemorySchema = z.object({
+  id: z.string(),
+  kind: MemoryKind,
+  project: z.string(),
+  content: z.string(),
+  tags: z.array(z.string()),
+  utility: z.number(),
+  retrievals: z.number().int(),
+  used_after_retrieval: z.number().int(),
+  created: z.string(),
+  last_accessed: z.string(),
+  related: z.array(z.string()),
+});
+export type Memory = z.infer<typeof MemorySchema>;
 
 export interface MemoryRow {
   id: string;
@@ -42,7 +43,7 @@ export interface MemoryRow {
 export function rowToMemory(row: MemoryRow): Memory {
   return {
     ...row,
-    kind: row.kind as MemoryKind,
+    kind: MemoryKind.parse(row.kind),
     tags: JSON.parse(row.tags),
     related: JSON.parse(row.related),
   };
@@ -88,8 +89,4 @@ export const SortOption = z.enum([
 ]);
 export type SortOption = z.infer<typeof SortOption>;
 
-export const QueryInput = z.object({
-  filter: QueryFilter,
-  sort: SortOption.optional().default("utility_desc"),
-  limit: z.number().int().min(1).max(100).optional().default(10),
-});
+export type FilterableColumn = "utility" | "created" | "last_accessed";

@@ -7,6 +7,7 @@ import { join } from "path";
 import { MemoryStore } from "./store.js";
 import {
   MemoryKind,
+  MemorySchema,
   QueryFilter,
   SortOption,
   type Memory,
@@ -25,12 +26,26 @@ function formatMemory(m: Memory): string {
   return `[${m.kind}, ${m.project}, utility: ${m.utility.toFixed(2)}] ${m.content}`;
 }
 
+function textResult(text: string, isError?: boolean) {
+  return {
+    content: [{ type: "text" as const, text }],
+    ...(isError ? { isError: true } : {}),
+  };
+}
+
+function formatSection(heading: string, items: Memory[]): string | null {
+  if (items.length === 0) return null;
+  return (
+    `\n${heading}:\n` +
+    items.map((m) => `- ${m.content} [utility: ${m.utility.toFixed(2)}]`).join("\n")
+  );
+}
+
 const server = new McpServer({
   name: "coil",
   version: "0.1.0",
 });
 
-// 1. coil_store
 server.registerTool("coil_store", {
   description:
     "Store a typed memory item. Auto-detects project from git remote.",
@@ -43,17 +58,9 @@ server.registerTool("coil_store", {
 }, (args) => {
   const project = args.project ?? defaultProject;
   const memory = store.store(args.kind, project, args.content, args.tags);
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Stored memory ${memory.id}\n${formatMemory(memory)}`,
-      },
-    ],
-  };
+  return textResult(`Stored memory ${memory.id}\n${formatMemory(memory)}`);
 });
 
-// 2. coil_query
 server.registerTool("coil_query", {
   description:
     "Structured query with typed filters. Returns memories matching filter criteria.",
@@ -64,20 +71,11 @@ server.registerTool("coil_query", {
   },
 }, (args) => {
   const memories = store.query(args.filter, args.sort, args.limit);
-  if (memories.length === 0) {
-    return {
-      content: [{ type: "text" as const, text: "No memories match the query." }],
-    };
-  }
+  if (memories.length === 0) return textResult("No memories match the query.");
   const text = memories.map(formatMemory).join("\n\n");
-  return {
-    content: [
-      { type: "text" as const, text: `Found ${memories.length} memories:\n\n${text}` },
-    ],
-  };
+  return textResult(`Found ${memories.length} memories:\n\n${text}`);
 });
 
-// 3. coil_feedback
 server.registerTool("coil_feedback", {
   description:
     "Report whether a retrieved memory was actually useful. Updates utility score.",
@@ -87,23 +85,10 @@ server.registerTool("coil_feedback", {
   },
 }, (args) => {
   const memory = store.feedback(args.id, args.useful);
-  if (!memory) {
-    return {
-      content: [{ type: "text" as const, text: `Memory ${args.id} not found.` }],
-      isError: true,
-    };
-  }
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Updated utility for ${args.id}: ${memory.utility.toFixed(2)}`,
-      },
-    ],
-  };
+  if (!memory) return textResult(`Memory ${args.id} not found.`, true);
+  return textResult(`Updated utility for ${args.id}: ${memory.utility.toFixed(2)}`);
 });
 
-// 4. coil_relate
 server.registerTool("coil_relate", {
   description:
     "Create a bidirectional link between two memories.",
@@ -112,18 +97,11 @@ server.registerTool("coil_relate", {
     related_id: z.string().describe("Second memory ID"),
   },
 }, (args) => {
-  store.relate(args.id, args.related_id);
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Linked ${args.id} <-> ${args.related_id}`,
-      },
-    ],
-  };
+  const linked = store.relate(args.id, args.related_id);
+  if (!linked) return textResult("One or both memory IDs not found.", true);
+  return textResult(`Linked ${args.id} <-> ${args.related_id}`);
 });
 
-// 5. coil_status
 server.registerTool("coil_status", {
   description:
     "Overview: memory counts by kind, top utility items, project breakdown.",
@@ -140,17 +118,11 @@ server.registerTool("coil_status", {
     .join("\n");
   const topLines = s.topUtility.map(formatMemory).join("\n  ");
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Coil Memory Store\n${"─".repeat(18)}\nTotal: ${s.total}\n\nBy kind:\n${kindLines}\n\nBy project:\n${projLines}\n\nTop utility:\n  ${topLines}`,
-      },
-    ],
-  };
+  return textResult(
+    `Coil Memory Store\n${"─".repeat(18)}\nTotal: ${s.total}\n\nBy kind:\n${kindLines}\n\nBy project:\n${projLines}\n\nTop utility:\n  ${topLines}`,
+  );
 });
 
-// 6. coil_context
 server.registerTool("coil_context", {
   description:
     "Compiled project context summary: top decisions, patterns, errors, preferences. Designed for SessionStart injection.",
@@ -161,52 +133,25 @@ server.registerTool("coil_context", {
   const project = args.project ?? defaultProject;
   const ctx = store.context(project);
 
-  if (ctx.total === 0) {
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `No memories for project "${project}".`,
-        },
-      ],
-    };
-  }
+  if (ctx.total === 0) return textResult(`No memories for project "${project}".`);
 
   const sections: string[] = [
     `Project: ${ctx.project} (${ctx.total} memories, avg utility: ${ctx.avgUtility.toFixed(2)})`,
   ];
 
-  if (ctx.decisions.length > 0) {
-    sections.push(
-      "\nDecisions:\n" +
-        ctx.decisions.map((m) => `- ${m.content} [utility: ${m.utility.toFixed(2)}]`).join("\n"),
-    );
-  }
-  if (ctx.errors.length > 0) {
-    sections.push(
-      "\nKnown errors:\n" +
-        ctx.errors.map((m) => `- ${m.content} [utility: ${m.utility.toFixed(2)}]`).join("\n"),
-    );
-  }
-  if (ctx.patterns.length > 0) {
-    sections.push(
-      "\nPatterns:\n" +
-        ctx.patterns.map((m) => `- ${m.content} [utility: ${m.utility.toFixed(2)}]`).join("\n"),
-    );
-  }
-  if (ctx.preferences.length > 0) {
-    sections.push(
-      "\nPreferences:\n" +
-        ctx.preferences.map((m) => `- ${m.content} [utility: ${m.utility.toFixed(2)}]`).join("\n"),
-    );
+  for (const [heading, items] of [
+    ["Decisions", ctx.decisions],
+    ["Known errors", ctx.errors],
+    ["Patterns", ctx.patterns],
+    ["Preferences", ctx.preferences],
+  ] as const) {
+    const s = formatSection(heading, items);
+    if (s) sections.push(s);
   }
 
-  return {
-    content: [{ type: "text" as const, text: sections.join("\n") }],
-  };
+  return textResult(sections.join("\n"));
 });
 
-// 7. coil_forget
 server.registerTool("coil_forget", {
   description: "Delete a memory by ID. Hard delete from SQLite.",
   inputSchema: {
@@ -214,20 +159,12 @@ server.registerTool("coil_forget", {
   },
 }, (args) => {
   const deleted = store.forget(args.id);
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: deleted
-          ? `Deleted memory ${args.id}.`
-          : `Memory ${args.id} not found.`,
-      },
-    ],
-    ...(deleted ? {} : { isError: true }),
-  };
+  return textResult(
+    deleted ? `Deleted memory ${args.id}.` : `Memory ${args.id} not found.`,
+    !deleted,
+  );
 });
 
-// 8. coil_search
 server.registerTool("coil_search", {
   description:
     "Full-text search with optional kind and utility filters.",
@@ -238,54 +175,30 @@ server.registerTool("coil_search", {
   },
 }, (args) => {
   const memories = store.search(args.text, args.kind, args.min_utility);
-  if (memories.length === 0) {
-    return {
-      content: [{ type: "text" as const, text: "No memories match the search." }],
-    };
-  }
+  if (memories.length === 0) return textResult("No memories match the search.");
   const text = memories.map(formatMemory).join("\n\n");
-  return {
-    content: [
-      { type: "text" as const, text: `Found ${memories.length} memories:\n\n${text}` },
-    ],
-  };
+  return textResult(`Found ${memories.length} memories:\n\n${text}`);
 });
 
-// 9. coil_export
 server.registerTool("coil_export", {
   description: "Export all memories as JSON for backup or migration.",
 }, () => {
   const memories = store.exportAll();
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(memories, null, 2),
-      },
-    ],
-  };
+  return textResult(JSON.stringify(memories, null, 2));
 });
 
-// 10. coil_import
 server.registerTool("coil_import", {
   description: "Import memories from a JSON file. For restore or sharing.",
   inputSchema: {
     path: z.string().describe("Path to JSON file containing memories array"),
   },
 }, (args) => {
-  if (!existsSync(args.path)) {
-    return {
-      content: [{ type: "text" as const, text: `File not found: ${args.path}` }],
-      isError: true,
-    };
-  }
-  const data = JSON.parse(readFileSync(args.path, "utf-8")) as Memory[];
-  const count = store.importAll(data);
-  return {
-    content: [
-      { type: "text" as const, text: `Imported ${count} memories from ${args.path}.` },
-    ],
-  };
+  if (!existsSync(args.path)) return textResult(`File not found: ${args.path}`, true);
+  const raw = JSON.parse(readFileSync(args.path, "utf-8"));
+  const parsed = z.array(MemorySchema).safeParse(raw);
+  if (!parsed.success) return textResult(`Invalid format: ${parsed.error.message}`, true);
+  const count = store.importAll(parsed.data);
+  return textResult(`Imported ${count} memories from ${args.path}.`);
 });
 
 async function main() {

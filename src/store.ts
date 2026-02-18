@@ -5,6 +5,7 @@ import type {
   MemoryKind,
   MemoryRow,
   SortOption,
+  FilterableColumn,
 } from "./schema.js";
 import { rowToMemory } from "./schema.js";
 import type { z } from "zod";
@@ -49,6 +50,10 @@ const SORT_MAP: Record<SortOption, string> = {
   least_retrieved: "retrievals ASC",
 };
 
+function escapeLike(s: string): string {
+  return s.replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export class MemoryStore {
   private db: Database;
 
@@ -69,16 +74,19 @@ export class MemoryStore {
     const id = randomUUID();
     const tagsJson = JSON.stringify(tags);
 
-    this.db
-      .prepare(
-        `INSERT INTO memories (id, kind, project, content, tags, utility, retrievals, used_after_retrieval, created, last_accessed, related)
-       VALUES (?, ?, ?, ?, ?, 0.5, 0, 0, ?, ?, '[]')`,
-      )
-      .run(id, kind, project, content, tagsJson, now, now);
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO memories (id, kind, project, content, tags, utility, retrievals, used_after_retrieval, created, last_accessed, related)
+         VALUES (?, ?, ?, ?, ?, 0.5, 0, 0, ?, ?, '[]')`,
+        )
+        .run(id, kind, project, content, tagsJson, now, now);
 
-    this.db
-      .prepare(`INSERT INTO memories_fts (id, content, tags) VALUES (?, ?, ?)`)
-      .run(id, content, tagsJson);
+      this.db
+        .prepare(`INSERT INTO memories_fts (id, content, tags) VALUES (?, ?, ?)`)
+        .run(id, content, tagsJson);
+    });
+    tx();
 
     return {
       id,
@@ -128,20 +136,15 @@ export class MemoryStore {
       }
 
       if (filter.utility) {
-        this.applyNumericFilter("utility", filter.utility, conditions, params);
+        this.applyRangeFilter("utility", filter.utility, conditions, params);
       }
 
       if (filter.created) {
-        this.applyDateFilter("created", filter.created, conditions, params);
+        this.applyRangeFilter("created", filter.created, conditions, params);
       }
 
       if (filter.last_accessed) {
-        this.applyDateFilter(
-          "last_accessed",
-          filter.last_accessed,
-          conditions,
-          params,
-        );
+        this.applyRangeFilter("last_accessed", filter.last_accessed, conditions, params);
       }
 
       if (filter.has_related === true) {
@@ -177,33 +180,22 @@ export class MemoryStore {
     kind?: MemoryKind,
     minUtility?: number,
   ): Memory[] {
-    let sql: string;
+    const conditions: string[] = ["memories_fts MATCH ?"];
     const params: Param[] = [text];
 
-    if (kind && minUtility !== undefined) {
-      sql = `SELECT m.* FROM memories m
-             JOIN memories_fts f ON m.id = f.id
-             WHERE memories_fts MATCH ? AND m.kind = ? AND m.utility >= ?
-             ORDER BY rank`;
-      params.push(kind, minUtility);
-    } else if (kind) {
-      sql = `SELECT m.* FROM memories m
-             JOIN memories_fts f ON m.id = f.id
-             WHERE memories_fts MATCH ? AND m.kind = ?
-             ORDER BY rank`;
+    if (kind) {
+      conditions.push("m.kind = ?");
       params.push(kind);
-    } else if (minUtility !== undefined) {
-      sql = `SELECT m.* FROM memories m
-             JOIN memories_fts f ON m.id = f.id
-             WHERE memories_fts MATCH ? AND m.utility >= ?
-             ORDER BY rank`;
-      params.push(minUtility);
-    } else {
-      sql = `SELECT m.* FROM memories m
-             JOIN memories_fts f ON m.id = f.id
-             WHERE memories_fts MATCH ?
-             ORDER BY rank`;
     }
+    if (minUtility !== undefined) {
+      conditions.push("m.utility >= ?");
+      params.push(minUtility);
+    }
+
+    const sql = `SELECT m.* FROM memories m
+                 JOIN memories_fts f ON m.id = f.id
+                 WHERE ${conditions.join(" AND ")}
+                 ORDER BY rank`;
 
     const rows = this.db.prepare(sql).all(...params) as MemoryRow[];
     return rows.map(rowToMemory);
@@ -221,7 +213,11 @@ export class MemoryStore {
     return this.get(id);
   }
 
-  relate(id: string, relatedId: string): void {
+  relate(id: string, relatedId: string): boolean {
+    const aExists = this.get(id);
+    const bExists = this.get(relatedId);
+    if (!aExists || !bExists) return false;
+
     for (const [a, b] of [
       [id, relatedId],
       [relatedId, id],
@@ -238,14 +234,18 @@ export class MemoryStore {
           .run(JSON.stringify(related), a);
       }
     }
+    return true;
   }
 
   forget(id: string): boolean {
-    const result = this.db
-      .prepare(`DELETE FROM memories WHERE id = ?`)
-      .run(id);
-    this.db.prepare(`DELETE FROM memories_fts WHERE id = ?`).run(id);
-    return result.changes > 0;
+    const tx = this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM memories_fts WHERE id = ?`).run(id);
+      const result = this.db
+        .prepare(`DELETE FROM memories WHERE id = ?`)
+        .run(id);
+      return result.changes > 0;
+    });
+    return tx();
   }
 
   context(project?: string): {
@@ -258,33 +258,14 @@ export class MemoryStore {
     preferences: Memory[];
   } {
     const proj = project ?? "unknown";
-    const base = `SELECT * FROM memories WHERE project = ? AND utility >= 0.5`;
-
-    const decisions = (
-      this.db
-        .prepare(`${base} AND kind = 'decision' ORDER BY utility DESC LIMIT 5`)
-        .all(proj) as MemoryRow[]
-    ).map(rowToMemory);
-
-    const patterns = (
-      this.db
-        .prepare(`${base} AND kind = 'pattern' ORDER BY utility DESC LIMIT 5`)
-        .all(proj) as MemoryRow[]
-    ).map(rowToMemory);
-
-    const errors = (
-      this.db
-        .prepare(`${base} AND kind = 'error' ORDER BY utility DESC LIMIT 5`)
-        .all(proj) as MemoryRow[]
-    ).map(rowToMemory);
-
-    const preferences = (
-      this.db
-        .prepare(
-          `${base} AND kind = 'preference' ORDER BY utility DESC LIMIT 5`,
-        )
-        .all(proj) as MemoryRow[]
-    ).map(rowToMemory);
+    const queryByKind = (kind: string): Memory[] =>
+      (
+        this.db
+          .prepare(
+            `SELECT * FROM memories WHERE project = ? AND utility >= 0.5 AND kind = ? ORDER BY utility DESC LIMIT 5`,
+          )
+          .all(proj, kind) as MemoryRow[]
+      ).map(rowToMemory);
 
     const stats = this.db
       .prepare(
@@ -296,10 +277,10 @@ export class MemoryStore {
       project: proj,
       total: stats.total,
       avgUtility: stats.avg ?? 0,
-      decisions,
-      patterns,
-      errors,
-      preferences,
+      decisions: queryByKind("decision"),
+      patterns: queryByKind("pattern"),
+      errors: queryByKind("error"),
+      preferences: queryByKind("preference"),
     };
   }
 
@@ -419,25 +400,25 @@ export class MemoryStore {
     params: Param[],
   ): void {
     if ("any" in filter) {
-      const clauses = filter.any.map(() => "tags LIKE ?");
+      const clauses = filter.any.map(() => "tags LIKE ? ESCAPE '\\'");
       conditions.push(`(${clauses.join(" OR ")})`);
-      params.push(...filter.any.map((t) => `%"${t}"%`));
+      params.push(...filter.any.map((t) => `%"${escapeLike(t)}"%`));
     } else if ("all" in filter) {
       for (const t of filter.all) {
-        conditions.push("tags LIKE ?");
-        params.push(`%"${t}"%`);
+        conditions.push("tags LIKE ? ESCAPE '\\'");
+        params.push(`%"${escapeLike(t)}"%`);
       }
     } else if ("none" in filter) {
       for (const t of filter.none) {
-        conditions.push("tags NOT LIKE ?");
-        params.push(`%"${t}"%`);
+        conditions.push("tags NOT LIKE ? ESCAPE '\\'");
+        params.push(`%"${escapeLike(t)}"%`);
       }
     }
   }
 
-  private applyNumericFilter(
-    column: string,
-    filter: z.infer<typeof NumericFilter>,
+  private applyRangeFilter(
+    column: FilterableColumn,
+    filter: z.infer<typeof NumericFilter> | z.infer<typeof DateFilter>,
     conditions: string[],
     params: Param[],
   ): void {
@@ -447,19 +428,7 @@ export class MemoryStore {
     } else if ("lte" in filter) {
       conditions.push(`${column} <= ?`);
       params.push(filter.lte);
-    } else if ("between" in filter) {
-      conditions.push(`${column} BETWEEN ? AND ?`);
-      params.push(filter.between[0], filter.between[1]);
-    }
-  }
-
-  private applyDateFilter(
-    column: string,
-    filter: z.infer<typeof DateFilter>,
-    conditions: string[],
-    params: Param[],
-  ): void {
-    if ("after" in filter) {
+    } else if ("after" in filter) {
       conditions.push(`${column} > ?`);
       params.push(filter.after);
     } else if ("before" in filter) {

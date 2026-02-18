@@ -44,9 +44,9 @@ Add to your MCP config (`.mcp.json`, Claude Code settings, etc.):
 
 ### As Claude Code plugin (full integration)
 
-Copy the plugin files into your Claude Code configuration to get lifecycle hooks (auto-context on session start, knowledge extraction on compaction) and the `/coil` skill.
+Copy the `plugin/` contents into `~/.claude/plugins/coil/` to get lifecycle hooks (auto-context on session start, knowledge extraction on compaction) and the `/coil` skill. Update the `COIL_ROOT` paths in `hooks.json` and `.mcp.json` to point to your clone.
 
-See `plugin/` directory for:
+Files in `plugin/`:
 - `hooks.json` — lifecycle automation config
 - `skills/coil/SKILL.md` — `/coil` slash command
 - `agents/memory-extractor.md` — PreCompact knowledge extractor
@@ -102,7 +102,7 @@ SQLite at `~/.coil/coil.db` (override with `COIL_DB_PATH` or `COIL_DB_DIR`). Sin
 ## Development
 
 ```bash
-bun test          # 23 tests
+bun test          # run tests
 bun run check     # typecheck
 bun run dev       # start server with watch mode
 ```
