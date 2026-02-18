@@ -3,7 +3,7 @@
     "coil": {
       "type": "stdio",
       "command": "bun",
-      "args": ["run", "/Users/danwt/Documents/repos/coil/src/index.ts"],
+      "args": ["run", "<COIL_ROOT>/src/index.ts"],
       "env": {}
     }
   }

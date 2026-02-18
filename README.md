@@ -42,15 +42,27 @@ The result: an agent that starts every session with your past decisions loaded, 
 
 Requires [Bun](https://bun.sh/).
 
+### Claude Code (full integration)
+
+```bash
+git clone https://github.com/danwt/coil.git
+cd coil
+./install.sh
+```
+
+This registers the MCP server, adds SessionStart/PreCompact hooks, and installs the `/coil` skill and knowledge extraction agent. Restart Claude Code to activate.
+
+### As MCP server only (any agent)
+
+If you only want the MCP tools without Claude Code hooks:
+
 ```bash
 git clone https://github.com/danwt/coil.git
 cd coil
 bun install
 ```
 
-### As MCP server (any agent)
-
-Add to your MCP config (`.mcp.json`, Claude Code settings, etc.):
+Then add to your MCP config (`.mcp.json`, etc.):
 
 ```json
 {
@@ -66,45 +78,6 @@ Add to your MCP config (`.mcp.json`, Claude Code settings, etc.):
 ```
 
 Compatible with any MCP client (Claude Code, OpenCode, Cline, Continue, Goose).
-
-### Full Claude Code integration
-
-Beyond the MCP server, Coil provides lifecycle hooks, a `/coil` skill, and a knowledge extraction agent. Install these to get automatic context injection and knowledge capture.
-
-**1. MCP server** — add to `~/.claude.json` under `mcpServers` (as above).
-
-**2. Hooks** — add to `~/.claude/settings.json` under `hooks`:
-
-```json
-{
-  "SessionStart": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "/absolute/path/to/coil/hooks/session-start.sh"
-        }
-      ]
-    }
-  ],
-  "PreCompact": [
-    {
-      "matcher": "",
-      "hooks": [
-        {
-          "type": "agent",
-          "prompt": "Analyze the conversation transcript. Extract and store: (1) any architectural or technical decisions made — include the rationale, (2) recurring code patterns discovered, (3) errors encountered and their verified solutions, (4) user preferences learned. Use coil_store for each. Be selective — only store genuinely useful knowledge, not routine operations. Check existing memories with coil_query first to avoid duplicates."
-        }
-      ]
-    }
-  ]
-}
-```
-
-**3. Skill** — copy `plugin/skills/coil/SKILL.md` to `~/.claude/skills/coil/SKILL.md`.
-
-**4. Agent** — copy `plugin/agents/memory-extractor.md` to `~/.claude/agents/memory-extractor.md`.
 
 ## MCP Tools
 
@@ -166,6 +139,7 @@ bun run dev       # start server with watch mode
 See [ADR-001](docs/adr/001-architecture.md) for core decisions.
 
 ```
+install.sh        # One-command Claude Code setup
 src/
 ├── index.ts      # MCP server entry point (10 tools)
 ├── store.ts      # SQLite storage layer

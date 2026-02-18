@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "/Users/danwt/Documents/repos/coil/hooks/session-start.sh"
+          "command": "<COIL_ROOT>/hooks/session-start.sh"
         }
       ]
     }
