@@ -43,7 +43,7 @@ function formatSection(heading: string, items: Memory[]): string | null {
 
 const server = new McpServer({
   name: "coil",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 server.registerTool("coil_store", {
@@ -121,6 +121,44 @@ server.registerTool("coil_status", {
   return textResult(
     `Coil Memory Store\n${"─".repeat(18)}\nTotal: ${s.total}\n\nBy kind:\n${kindLines}\n\nBy project:\n${projLines}\n\nTop utility:\n  ${topLines}`,
   );
+});
+
+server.registerTool("coil_weekly_report", {
+  description:
+    "Weekly meta-analytics: was coil actually useful this week? Shows session count, retrieval rate, feedback yield, and an overall signal (HEALTHY / MARGINAL / NO_DATA).",
+  inputSchema: {
+    weeks: z.number().int().min(1).max(12).optional().default(1).describe("Number of weeks to report on"),
+  },
+}, (args) => {
+  const r = store.weeklyReport(args.weeks ?? 1);
+
+  const since = new Date(Date.now() - r.periodDays * 24 * 60 * 60 * 1000);
+  const dateStr = since.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const yieldStr = r.yieldRate !== null ? `${(r.yieldRate * 100).toFixed(0)}%` : 'n/a';
+  const rateStr = r.retrievalsPerSession !== null ? `${r.retrievalsPerSession.toFixed(1)}/session` : 'n/a';
+  const feedbackStr = `${r.feedbackUseful} useful, ${r.feedbackNotUseful} not`;
+
+  const lines = [
+    `Coil Meta Report: ${dateStr} – ${today}`,
+    '─'.repeat(40),
+    `Sessions tracked:     ${r.sessions}`,
+    `Retrievals total:     ${r.retrievals}   (${rateStr})`,
+    `New memories stored:  ${r.stores}`,
+    `Feedback given:       ${r.feedbackUseful + r.feedbackNotUseful}   (${feedbackStr})`,
+    `Yield rate:           ${yieldStr}`,
+    '',
+    `Signal: ${r.signal}`,
+  ];
+
+  if (r.signalReasons.length > 0) {
+    for (const reason of r.signalReasons) {
+      lines.push(`  → ${reason}`);
+    }
+  }
+
+  return textResult(lines.join('\n'));
 });
 
 server.registerTool("coil_context", {

@@ -268,3 +268,68 @@ describe("export/import", () => {
     newStore.close();
   });
 });
+
+describe("events and weekly report", () => {
+  it("logs session events", () => {
+    store.logSession("myproj");
+    const report = store.weeklyReport();
+    expect(report.sessions).toBe(1);
+  });
+
+  it("logs store events", () => {
+    store.store("decision", "proj", "Use RLS", []);
+    const report = store.weeklyReport();
+    expect(report.stores).toBe(1);
+  });
+
+  it("logs retrieve events on query", () => {
+    store.store("decision", "proj", "D1", []);
+    store.store("decision", "proj", "D2", []);
+    store.query();
+    const report = store.weeklyReport();
+    expect(report.retrievals).toBe(1);
+  });
+
+  it("logs feedback events", () => {
+    const m = store.store("error", "proj", "Bug", []);
+    store.query();
+    store.feedback(m.id, true);
+    store.feedback(m.id, false);
+    const report = store.weeklyReport();
+    expect(report.feedbackUseful).toBe(1);
+    expect(report.feedbackNotUseful).toBe(1);
+  });
+
+  it("returns NO_DATA with no sessions", () => {
+    const report = store.weeklyReport();
+    expect(report.signal).toBe("NO_DATA");
+  });
+
+  it("returns HEALTHY with good metrics", () => {
+    store.logSession("proj");
+    store.logSession("proj");
+    const m1 = store.store("decision", "proj", "D1", []);
+    const m2 = store.store("error", "proj", "E1", []);
+    store.query();
+    store.query();
+    store.query();
+    store.query();
+    store.query();
+    store.feedback(m1.id, true);
+    store.feedback(m2.id, true);
+    const report = store.weeklyReport();
+    expect(report.signal).toBe("HEALTHY");
+  });
+
+  it("computes correct yield rate", () => {
+    store.logSession("proj");
+    const m = store.store("decision", "proj", "D1", []);
+    store.query();
+    store.query();
+    store.query();
+    store.feedback(m.id, true);
+    store.feedback(m.id, false);
+    const report = store.weeklyReport();
+    expect(report.yieldRate).toBe(0.5);
+  });
+});
